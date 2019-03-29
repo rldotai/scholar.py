@@ -8,7 +8,7 @@ I also made some minor modifications to use standard library methods for handlin
 As a result the script no longer seems to work with Python 2.7, although it didn't really work before the modifications, so.
 
 Now it at least works correctly, as far as I can tell by running some of the examples.
-As an aside, you'll need to set the execute bit for those examples to work as written, otherwise `chmod +x scholar.py`.
+As an aside, you'll need to set the execute bit for those examples to work as written, e.g. `chmod +x scholar.py`; alternatively, use `python3 scholar.py [...]`.
 
 The original README is below.
 
