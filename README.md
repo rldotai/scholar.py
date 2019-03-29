@@ -1,3 +1,19 @@
+# Scholar.py
+
+I modified this script because it was throwing exceptions, presumably because Google changed the classes of some `div` elements.
+(For example, exceptions like: `TypeError: slice indices must be integers or None or have an __index__ method`).
+
+I also made some minor modifications to use standard library methods for handling URLs, rather than _ad hoc_ operations on strings.
+
+As a result the script no longer seems to work with Python 2.7, although it didn't really work before the modifications, so.
+
+Now it at least works correctly, as far as I can tell by running some of the examples.
+As an aside, you'll need to set the execute bit for those examples to work as written, otherwise `chmod +x scholar.py`.
+
+The original README is below.
+
+---
+
 scholar.py
 ==========
 
@@ -65,7 +81,7 @@ Note the cluster ID in the above. Using this ID, you can directly access the clu
           Versions 0
           PDF link http://www.informationphilosopher.com/solutions/scientists/einstein/1917_Radiation.pdf
            Excerpt The formal similarity between the chromatic distribution curve for thermal radiation [...]
-    
+
              Title The Quantum Theory of Radiation
                URL http://web.ihep.su/dbserv/compas/src/einstein17/eng.pdf
          Citations 0
