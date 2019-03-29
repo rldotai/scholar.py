@@ -6,6 +6,15 @@ page. It is not a recursive crawler.
 """
 # ChangeLog
 # ---------
+# 2.12   Modified the script to avoid searching for a div with class
+#        'gs_ttss', as that was causing an Exception of the form:
+#        `TypeError: slice indices must be integers or None or have an __index__ method`
+#        Also fixed the `_path2url` function to use `urllib.parse.urljoin`
+#        instead of the somewhat ad-hoc method before, which was returning urls
+#        prefaced by "https://scholar.google.com" (probably due to the shift
+#        over to HTTPS across Google domains).
+#        (t. bab)
+#
 #
 # 2.11  The Scholar site seems to have become more picky about the
 #       number of results requested. The default of 20 in scholar.py
@@ -172,7 +181,7 @@ try:
     # pylint: disable-msg=F0401
     # pylint: disable-msg=E0611
     from urllib.request import HTTPCookieProcessor, Request, build_opener
-    from urllib.parse import quote, unquote
+    from urllib.parse import quote, unquote, urlparse, urljoin
     from http.cookiejar import MozillaCookieJar
 except ImportError:
     # Fallback for Python 2
@@ -481,6 +490,8 @@ class ScholarArticleParser(object):
                 self.article['url_versions'] = \
                     self._strip_url_arg('num', self._path2url(tag.get('href')))
 
+                    # self._strip_url_arg('num', self._path2url(tag.get('href')))
+
             if tag.getText().startswith('Import'):
                 self.article['url_citation'] = self._path2url(tag.get('href'))
 
@@ -512,14 +523,12 @@ class ScholarArticleParser(object):
 
     def _path2url(self, path):
         """Helper, returns full URL in case path isn't one."""
-        if path.startswith('http://'):
-            return path
-        if not path.startswith('/'):
-            path = '/' + path
-        return self.site + path
+        return urljoin(self.site, path)
 
     def _strip_url_arg(self, arg, url):
         """Helper, removes a URL-encoded argument, if present."""
+        print(arg)
+        print(url)
         parts = url.split('?', 1)
         if len(parts) != 2:
             return url
@@ -570,6 +579,82 @@ class ScholarArticleParser120726(ScholarArticleParser):
             if str(tag).lower().find('.pdf'):
                 if tag.find('div', {'class': 'gs_ttss'}):
                     self._parse_links(tag.find('div', {'class': 'gs_ttss'}))
+
+            if tag.name == 'div' and self._tag_has_class(tag, 'gs_ri'):
+                # There are (at least) two formats here. In the first
+                # one, we have a link, e.g.:
+                #
+                # <h3 class="gs_rt">
+                #   <a href="http://dl.acm.org/citation.cfm?id=972384" class="yC0">
+                #     <b>Honeycomb</b>: creating intrusion detection signatures using
+                #        honeypots
+                #   </a>
+                # </h3>
+                #
+                # In the other, there's no actual link -- it's what
+                # Scholar renders as "CITATION" in the HTML:
+                #
+                # <h3 class="gs_rt">
+                #   <span class="gs_ctu">
+                #     <span class="gs_ct1">[CITATION]</span>
+                #     <span class="gs_ct2">[C]</span>
+                #   </span>
+                #   <b>Honeycomb</b> automated ids signature creation using honeypots
+                # </h3>
+                #
+                # We now distinguish the two.
+                try:
+                    atag = tag.h3.a
+                    self.article['title'] = ''.join(atag.findAll(text=True))
+                    self.article['url'] = self._path2url(atag['href'])
+                    if self.article['url'].endswith('.pdf'):
+                        self.article['url_pdf'] = self.article['url']
+                except:
+                    # Remove a few spans that have unneeded content (e.g. [CITATION])
+                    for span in tag.h3.findAll(name='span'):
+                        span.clear()
+                    self.article['title'] = ''.join(tag.h3.findAll(text=True))
+
+                if tag.find('div', {'class': 'gs_a'}):
+                    year = self.year_re.findall(tag.find('div', {'class': 'gs_a'}).text)
+                    self.article['year'] = year[0] if len(year) > 0 else None
+
+                if tag.find('div', {'class': 'gs_fl'}):
+                    self._parse_links(tag.find('div', {'class': 'gs_fl'}))
+
+                if tag.find('div', {'class': 'gs_rs'}):
+                    # These are the content excerpts rendered into the results.
+                    raw_text = tag.find('div', {'class': 'gs_rs'}).findAll(text=True)
+                    if len(raw_text) > 0:
+                        raw_text = ''.join(raw_text)
+                        raw_text = raw_text.replace('\n', '')
+                        self.article['excerpt'] = raw_text
+
+
+
+class ScholarArticleParser290319(ScholarArticleParser):
+    """
+    This class reflects update to the Scholar results page layout as of
+    March 29, 2019.
+    """
+    def _parse_article(self, div):
+        self.article = ScholarArticle()
+
+        for tag in div:
+            if not hasattr(tag, 'name'):
+                continue
+
+            # Don't really know what this does, no gs_ttss in current results
+            # Looks like it was trying to find a PDF link?
+            # But if `.pdf` is not found, this returns true, which is weird.
+            # Then if the div contains no sub-tags, an error is thrown.
+            # Either way, there don't seem to be 'gs_ttss' divs anymore.
+            # So for now it's commented out.
+            # if str(tag).lower().find('.pdf') >= 0:
+            #     print('PDF?')
+            #     print(tag)
+            #     if tag.find('div', {'class': 'gs_ttss'}):
+            #         self._parse_links(tag.find('div', {'class': 'gs_ttss'}))
 
             if tag.name == 'div' and self._tag_has_class(tag, 'gs_ri'):
                 # There are (at least) two formats here. In the first
@@ -927,7 +1012,8 @@ class ScholarQuerier(object):
     # Older URLs:
     # ScholarConf.SCHOLAR_SITE + '/scholar?q=%s&hl=en&btnG=Search&as_sdt=2001&as_sdtp=on
 
-    class Parser(ScholarArticleParser120726):
+    # class Parser(ScholarArticleParser120726):
+    class Parser(ScholarArticleParser290319):
         def __init__(self, querier):
             ScholarArticleParser120726.__init__(self)
             self.querier = querier
@@ -1021,6 +1107,10 @@ class ScholarQuerier(object):
         html = self._get_http_response(url=query.get_url(),
                                        log_msg='dump of query response HTML',
                                        err_msg='results retrieval failed')
+
+        # DEBUGGING
+        with open('test.html', 'wb') as f:
+            f.write(html)
         if html is None:
             return
 
